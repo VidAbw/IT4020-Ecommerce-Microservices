@@ -1,0 +1,21 @@
+for gateway routing)
+fastapi, 
+uvicorn, 
+httpx
+
+pydantic
+
+
+/gateway (Port 8000)
+
+/user-service (Port 8001)
+
+/product-service (Port 8002)
+
+/cart-service (Port 8003)
+
+/order-service (Port 8004)
+
+/inventory-service (Port 8005)
+
+/payment-service (Port 8006)
