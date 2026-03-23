@@ -1,6 +1,7 @@
 # Environments
 venv/
 env/
+.env
 
 # Python Cache
 __pycache__/
@@ -8,5 +9,10 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Databases (SQLite)
+*.db
+*.sqlite3
+
 # OS Files
 .DS_Store
+Thumbs.db
