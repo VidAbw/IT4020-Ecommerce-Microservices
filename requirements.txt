@@ -1,9 +1,7 @@
-for gateway routing)
-fastapi, 
-uvicorn, 
-httpx
-
-pydantic
+fastapi==0.104.0
+uvicorn==0.23.2
+httpx==0.25.0
+pydantic==2.4.2
 
 
 /gateway (Port 8000)
