@@ -1,59 +1,58 @@
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from fastapi import FastAPI, Request, HTTPException, Response
+import httpx
 
-# --- 1. SQLITE DATABASE SETUP ---
-# This creates a local file named 'users.db' in your folder
-SQLALCHEMY_DATABASE_URL = "sqlite:///./users.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+app = FastAPI(title="E-Commerce API Gateway", version="1.0")
 
-# --- 2. DATABASE MODEL (SQLAlchemy) ---
-class DBUser(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    role = Column(String, default="customer")
+# Native Ports for the Microservices
+SERVICES = {
+    "users": "http://localhost:8001",
+    "products": "http://localhost:8002",
+    "cart": "http://localhost:8003",
+    "orders": "http://localhost:8004",
+    "inventory": "http://localhost:8005",
+    "payments": "http://localhost:8006",
+}
 
-# Create the database tables automatically
-Base.metadata.create_all(bind=engine)
+@app.get("/")
+def gateway_root():
+    return {"message": "API Gateway is running on Port 8000. All traffic goes through here."}
 
-# --- 3. PYDANTIC MODELS (For FastAPI) ---
-class UserBase(BaseModel):
-    name: str
-    email: str
-    role: str = "customer"
+# --- CORE ROUTING LOGIC ---
+async def forward_request(service_name: str, path: str, request: Request):
+    if service_name not in SERVICES:
+        raise HTTPException(status_code=404, detail="Service not found in Gateway")
 
-class UserResponse(UserBase):
-    id: int
-    class Config:
-        from_attributes = True
+    microservice_url = f"{SERVICES[service_name]}/{path}"
 
-# --- 4. FASTAPI APP ---
-app = FastAPI(title="User Microservice (SQLite)", version="1.0.0")
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.request(
+                method=request.method,
+                url=microservice_url,
+                headers=dict(request.headers),
+                content=await request.body()
+            )
+            return Response(
+                content=response.content, 
+                status_code=response.status_code, 
+                media_type=response.headers.get("content-type", "application/json")
+            )
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail=f"{service_name.capitalize()} Service is currently down.")
 
-# Dependency to get the database session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# --- DYNAMIC ROUTES FOR ALL SERVICES ---
+@app.get("/{service_name}/{path:path}", summary="Route GET requests")
+async def route_get(service_name: str, path: str, request: Request):
+    return await forward_request(service_name, path, request)
 
-# --- 5. ENDPOINTS ---
-@app.get("/api/users", response_model=list[UserResponse])
-def get_all_users(db: Session = Depends(get_db)):
-    """Retrieve all users directly from the SQLite database"""
-    return db.query(DBUser).all()
+@app.post("/{service_name}/{path:path}", summary="Route POST requests")
+async def route_post(service_name: str, path: str, request: Request):
+    return await forward_request(service_name, path, request)
 
-@app.post("/api/users", response_model=UserResponse, status_code=201)
-def create_user(user: UserBase, db: Session = Depends(get_db)):
-    """Save a new user to the SQLite database"""
-    db_user = DBUser(name=user.name, email=user.email, role=user.role)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+@app.put("/{service_name}/{path:path}", summary="Route PUT requests")
+async def route_put(service_name: str, path: str, request: Request):
+    return await forward_request(service_name, path, request)
+
+@app.delete("/{service_name}/{path:path}", summary="Route DELETE requests")
+async def route_delete(service_name: str, path: str, request: Request):
+    return await forward_request(service_name, path, request)

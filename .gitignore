@@ -16,3 +16,4 @@ __pycache__/
 # OS Files
 .DS_Store
 Thumbs.db
+gateway/__pycache__/main.cpython-313.pyc
