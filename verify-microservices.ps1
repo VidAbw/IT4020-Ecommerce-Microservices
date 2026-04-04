@@ -22,29 +22,35 @@ function Test-Endpoint {
         [string]$Url
     )
 
-    try {
-        $res = Invoke-WebRequest -Uri $Url -Method GET -UseBasicParsing -TimeoutSec 8
-        return [PSCustomObject]@{
-            Name = $Name
-            Url = $Url
-            Status = $res.StatusCode
-            Result = "PASS"
-            Detail = ""
+    $lastStatusCode = "N/A"
+    $lastError = ""
+
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        try {
+            $res = Invoke-WebRequest -Uri $Url -Method GET -UseBasicParsing -TimeoutSec 8
+            return [PSCustomObject]@{
+                Name = $Name
+                Url = $Url
+                Status = $res.StatusCode
+                Result = "PASS"
+                Detail = ""
+            }
+        }
+        catch {
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                $lastStatusCode = [int]$_.Exception.Response.StatusCode
+            }
+            $lastError = $_.Exception.Message
+            Start-Sleep -Seconds 1
         }
     }
-    catch {
-        $statusCode = "N/A"
-        if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
 
-        return [PSCustomObject]@{
-            Name = $Name
-            Url = $Url
-            Status = $statusCode
-            Result = "FAIL"
-            Detail = $_.Exception.Message
-        }
+    return [PSCustomObject]@{
+        Name = $Name
+        Url = $Url
+        Status = $lastStatusCode
+        Result = "FAIL"
+        Detail = $lastError
     }
 }
 

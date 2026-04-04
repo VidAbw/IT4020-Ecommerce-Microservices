@@ -1,10 +1,31 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Float, String
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from typing import List
 
 app = FastAPI(title="Product Service", version="1.0")
 
-# 1. Example Data Model
-class Product (BaseModel):
+SQLALCHEMY_DATABASE_URL = "sqlite:///./products.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+class DBProduct(Base):
+    __tablename__ = "products"
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    stock_status = Column(String, nullable=False)
+
+
+Base.metadata.create_all(bind=engine)
+
+
+class Product(BaseModel):
     id: str
     name: str
     description: str
@@ -12,69 +33,97 @@ class Product (BaseModel):
     category: str
     stock_status: str
 
-# 2. Mock Database (Using a list of dictionaries)
-db = [
-    {
-        "id": "p-101",
-        "name": "Wireless Headphones",
-        "description": "Noise-cancelling over-ear headphones.",
-        "price": 199.99,
-        "category": "Electronics",
-        "stock_status": "In Stock"
-    },
-    {
-        "id": "p-102",
-        "name": "Mechanical Keyboard",
-        "description": "RGB wired mechanical keyboard.",
-        "price": 89.99,
-        "category": "Electronics",
-        "stock_status": "Out of Stock"
-    }
-]
+    class Config:
+        from_attributes = True
 
-# 3. Endpoints
-@app.get("/")
-def read_products():
-    return {"products": db}
 
-@app.get("/{product_id}")
-def read_product(product_id: str):
-    # Find the product or return None
-    product = next((p for p in db if p["id"] == product_id), None)
-    
+class ProductListResponse(BaseModel):
+    products: List[Product]
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def seed_products_if_empty():
+    db = SessionLocal()
+    try:
+        if db.query(DBProduct).count() == 0:
+            db.add_all([
+                DBProduct(
+                    id="p-101",
+                    name="Wireless Headphones",
+                    description="Noise-cancelling over-ear headphones.",
+                    price=199.99,
+                    category="Electronics",
+                    stock_status="In Stock",
+                ),
+                DBProduct(
+                    id="p-102",
+                    name="Mechanical Keyboard",
+                    description="RGB wired mechanical keyboard.",
+                    price=89.99,
+                    category="Electronics",
+                    stock_status="Out of Stock",
+                ),
+            ])
+            db.commit()
+    finally:
+        db.close()
+
+
+seed_products_if_empty()
+
+
+@app.get("/", response_model=ProductListResponse)
+def read_products(db: Session = Depends(get_db)):
+    return {"products": db.query(DBProduct).all()}
+
+
+@app.get("/{product_id}", response_model=Product)
+def read_product(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(DBProduct).filter(DBProduct.id == product_id).first()
     if product:
         return product
-    
-    # Return a proper 404 if the ID doesn't exist
     raise HTTPException(status_code=404, detail="Product not found")
 
-@app.post("/", status_code=201)
-def create_product(product: Product):
-    if any(p["id"] == product.id for p in db):
+
+@app.post("/", response_model=Product, status_code=201)
+def create_product(product: Product, db: Session = Depends(get_db)):
+    existing = db.query(DBProduct).filter(DBProduct.id == product.id).first()
+    if existing:
         raise HTTPException(status_code=400, detail="Product with this ID already exists")
-    db.append(product.model_dump() if hasattr(product, "model_dump") else product.dict())
+    new_product = DBProduct(**product.model_dump())
+    db.add(new_product)
+    db.commit()
+    db.refresh(new_product)
+    return new_product
+
+
+@app.put("/{product_id}", response_model=Product)
+def update_product(product_id: str, updated_product: Product, db: Session = Depends(get_db)):
+    product = db.query(DBProduct).filter(DBProduct.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    payload = updated_product.model_dump()
+    payload["id"] = product_id
+    for key, value in payload.items():
+        setattr(product, key, value)
+    db.commit()
+    db.refresh(product)
     return product
 
-@app.put("/{product_id}")
-def update_product(product_id: str, updated_product: Product):
-    for index, p in enumerate(db):
-        if p["id"] == product_id:
-            product_dict = updated_product.model_dump() if hasattr(updated_product, "model_dump") else updated_product.dict()
-            product_dict["id"] = product_id
-            db[index] = product_dict
-            return product_dict
-    
-    raise HTTPException(status_code=404, detail="Product not found")
 
 @app.delete("/{product_id}", status_code=204)
-def delete_product(product_id: str):
-    for index, p in enumerate(db):
-        if p["id"] == product_id:
-            del db[index]
-            return
-    
-    raise HTTPException(status_code=404, detail="Product not found")
-
-
-# To run this specific service:
-# uvicorn main:app --reload --port 8002
+def delete_product(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(DBProduct).filter(DBProduct.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(product)
+    db.commit()
+    return None
