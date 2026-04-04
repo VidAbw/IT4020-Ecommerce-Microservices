@@ -43,11 +43,37 @@ def get_db():
     finally:
         db.close()
 
+def seed_cart_if_empty():
+    db = SessionLocal()
+    try:
+        if db.query(DBCartItem).count() == 0:
+            db.add_all([
+                DBCartItem(user_id=1, product_id=101, quantity=2),
+                DBCartItem(user_id=1, product_id=102, quantity=1),
+                DBCartItem(user_id=2, product_id=101, quantity=5),
+            ])
+            db.commit()
+    finally:
+        db.close()
+
+
+seed_cart_if_empty()
+
+
 # --- 5. ENDPOINTS ---
 @app.get("/api/cart/{user_id}", response_model=list[CartItemResponse])
 def get_cart_items(user_id: int, db: Session = Depends(get_db)):
     """Retrieve all items in a specific user's cart"""
     return db.query(DBCartItem).filter(DBCartItem.user_id == user_id).all()
+
+
+@app.get("/api/cart/item/{item_id}", response_model=CartItemResponse)
+def get_cart_item(item_id: int, db: Session = Depends(get_db)):
+    """Retrieve a single cart item by its unique ID"""
+    item = db.query(DBCartItem).filter(DBCartItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    return item
 
 @app.post("/api/cart", response_model=CartItemResponse, status_code=201)
 def add_to_cart(item: CartItemBase, db: Session = Depends(get_db)):
@@ -71,6 +97,25 @@ def add_to_cart(item: CartItemBase, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_item)
         return new_item
+
+
+@app.put("/api/cart/{item_id}", response_model=CartItemResponse)
+def update_cart_item(item_id: int, quantity: int, db: Session = Depends(get_db)):
+    """Update the quantity of a specific item in the cart"""
+    item = db.query(DBCartItem).filter(DBCartItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    
+    if quantity <= 0:
+        # If quantity is 0 or less, remove the item
+        db.delete(item)
+        db.commit()
+        raise HTTPException(status_code=204, detail="Item removed (quantity set to 0)")
+
+    item.quantity = quantity
+    db.commit()
+    db.refresh(item)
+    return item
 
 @app.delete("/api/cart/{item_id}", status_code=204)
 def remove_from_cart(item_id: int, db: Session = Depends(get_db)):

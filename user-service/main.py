@@ -82,6 +82,21 @@ def create_user(user_in: UserBase, db: Session = Depends(get_db)):
     return new_user
 
 
+@app.put("/api/users/{user_id}", response_model=User)
+def update_user(user_id: int, user_in: UserBase, db: Session = Depends(get_db)):
+    user = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.name = user_in.name
+    user.email = user_in.email
+    user.role = user_in.role
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @app.delete("/api/users/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(DBUser).filter(DBUser.id == user_id).first()
