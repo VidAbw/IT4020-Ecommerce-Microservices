@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, Column, Float, String
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from typing import List
@@ -32,6 +32,29 @@ class Product(BaseModel):
     price: float
     category: str
     stock_status: str
+
+    @field_validator("id", "name", "description", "category", "stock_status")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Field cannot be empty")
+        return value.strip()
+
+    @field_validator("price")
+    @classmethod
+    def validate_positive_price(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Price must be greater than 0")
+        return value
+
+    @field_validator("stock_status")
+    @classmethod
+    def validate_stock_status(cls, value: str) -> str:
+        allowed_statuses = {"In Stock", "Out of Stock", "Low Stock"}
+        normalized = value.strip()
+        if normalized not in allowed_statuses:
+            raise ValueError("Stock status must be one of: In Stock, Out of Stock, Low Stock")
+        return normalized
 
     class Config:
         from_attributes = True

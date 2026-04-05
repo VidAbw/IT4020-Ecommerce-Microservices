@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from typing import List
@@ -29,10 +29,41 @@ class OrderCreate(BaseModel):
 	product_id: str
 	quantity: int
 
+	@field_validator("user_id")
+	@classmethod
+	def validate_user_id_positive(cls, value: int) -> int:
+		if value <= 0:
+			raise ValueError("user_id must be greater than 0")
+		return value
+
+	@field_validator("product_id")
+	@classmethod
+	def validate_product_id_non_empty(cls, value: str) -> str:
+		cleaned = value.strip()
+		if not cleaned:
+			raise ValueError("product_id cannot be empty")
+		return cleaned
+
+	@field_validator("quantity")
+	@classmethod
+	def validate_quantity_positive(cls, value: int) -> int:
+		if value <= 0:
+			raise ValueError("quantity must be greater than 0")
+		return value
+
 
 class Order(OrderCreate):
 	id: int
 	status: str = "created"
+
+	@field_validator("status")
+	@classmethod
+	def validate_status_allowed(cls, value: str) -> str:
+		allowed_statuses = {"created", "processing", "shipped", "cancelled"}
+		cleaned = value.strip().lower()
+		if cleaned not in allowed_statuses:
+			raise ValueError("status must be one of: created, processing, shipped, cancelled")
+		return cleaned
 
 	class Config:
 		from_attributes = True
@@ -100,7 +131,14 @@ def update_order(order_id: int, order_in: OrderCreate, status: str = None, db: S
 	order.product_id = order_in.product_id
 	order.quantity = order_in.quantity
 	if status:
-		order.status = status
+		allowed_statuses = {"created", "processing", "shipped", "cancelled"}
+		normalized_status = status.strip().lower()
+		if normalized_status not in allowed_statuses:
+			raise HTTPException(
+				status_code=422,
+				detail="status must be one of: created, processing, shipped, cancelled",
+			)
+		order.status = normalized_status
 	
 	db.commit()
 	db.refresh(order)

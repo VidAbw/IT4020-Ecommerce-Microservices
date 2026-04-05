@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request, HTTPException, Response
+from fastapi import FastAPI, Request, HTTPException, Response, Body
+from typing import Any
 import httpx
 
 app = FastAPI(title="E-Commerce API Gateway", version="1.0")
@@ -22,7 +23,12 @@ async def forward_request(service_name: str, path: str, request: Request):
     if service_name not in SERVICES:
         raise HTTPException(status_code=404, detail="Service not found in Gateway")
 
-    microservice_url = f"{SERVICES[service_name]}/{path}"
+    # Normalize path so '/', '//', or leading slashes still route to service root correctly.
+    normalized_path = (path or "").lstrip("/")
+    if normalized_path:
+        microservice_url = f"{SERVICES[service_name]}/{normalized_path}"
+    else:
+        microservice_url = f"{SERVICES[service_name]}/"
 
     async with httpx.AsyncClient() as client:
         try:
@@ -46,11 +52,41 @@ async def route_get(service_name: str, path: str, request: Request):
     return await forward_request(service_name, path, request)
 
 @app.post("/{service_name}/{path:path}", summary="Route POST requests")
-async def route_post(service_name: str, path: str, request: Request):
+async def route_post(
+    service_name: str,
+    path: str,
+    request: Request,
+    payload: Any = Body(
+        ...,
+        example={
+            "name": "John Doe",
+            "email": "john@example.com",
+            "role": "customer",
+            "id": 1,
+        },
+    ),
+):
+    # Declaring payload enables Swagger JSON editor; request forwarding still uses raw request body.
+    _ = payload
     return await forward_request(service_name, path, request)
 
 @app.put("/{service_name}/{path:path}", summary="Route PUT requests")
-async def route_put(service_name: str, path: str, request: Request):
+async def route_put(
+    service_name: str,
+    path: str,
+    request: Request,
+    payload: Any = Body(
+        ...,
+        example={
+            "name": "John Doe",
+            "email": "john@example.com",
+            "role": "customer",
+            "id": 1,
+        },
+    ),
+):
+    # Declaring payload enables Swagger JSON editor; request forwarding still uses raw request body.
+    _ = payload
     return await forward_request(service_name, path, request)
 
 @app.delete("/{service_name}/{path:path}", summary="Route DELETE requests")

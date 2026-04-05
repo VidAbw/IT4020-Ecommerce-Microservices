@@ -62,7 +62,7 @@ To view the data in any service:
 1. Navigate to the service folder (e.g., `cd product-service`).
 2. Run the database viewer script:
    ```powershell
-   python view_db_data.py
+   
    ```
 
 ### 6. Project Structure
@@ -70,7 +70,7 @@ To view the data in any service:
 ```text
 IT4020-Ecommerce-Microservices/
 ├── gateway/            # API Gateway (Port 8000)
-├── user-service/       # User Management (Port 8001)
+├── user-service/  python view_db_data.py     # User Management (Port 8001)
 ├── product-service/    # Product Catalog (Port 8002)
 ├── cart-service/       # Shopping Cart (Port 8003)
 ├── order-service/      # Order Processing (Port 8004)

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from typing import List
@@ -27,6 +27,31 @@ class UserBase(BaseModel):
     name: str
     email: str
     role: str = "customer"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_non_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Name cannot be empty")
+        return value.strip()
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_contains_at(cls, value: str) -> str:
+        # Keep validation simple per project requirement: email must include '@'.
+        cleaned = value.strip()
+        if "@" not in cleaned:
+            raise ValueError("Email must contain '@'")
+        return cleaned
+
+    @field_validator("role")
+    @classmethod
+    def validate_role_allowed(cls, value: str) -> str:
+        allowed_roles = {"customer", "admin", "client"}
+        cleaned = value.strip().lower()
+        if cleaned not in allowed_roles:
+            raise ValueError("Role must be either 'customer', 'admin', or 'client'")
+        return cleaned
 
 
 class User(UserBase):
